@@ -54,6 +54,7 @@ async fn handle_client(
         match parse_command(line.trim().to_string()) {
             Command::Get { key } => {
                 tracing::trace!("command: get [{}].", key);
+
                 if let Some(value) = db.get(&key) {
                     tracing::trace!("key [{}]: [{}].", key, String::from_utf8_lossy(value.get()));
                 } else {
@@ -62,21 +63,26 @@ async fn handle_client(
             }
             Command::Set { key, value } => {
                 tracing::trace!("command: set [{}]: [{}]).", key, value);
-                if let Some(val) = db.get(&key) {
-                    val.update(value.into_bytes());
-                } else {
-                    match db.insert(key.clone(), value.into_bytes()) {
-                        Ok(_) => {
-                            tracing::trace!("key [{}] inserted.", key);
-                        }
-                        Err((k, v)) => {
-                            tracing::trace!("key [{}] already exists with value [{:?}].", k, v);
-                        }
+
+                if db.contains(&key) {
+                    db.remove_async(&key).await;
+                }
+
+                match db.insert_async(key.clone(), value.into_bytes()).await {
+                    Ok(_) => {
+                        tracing::trace!("key [{}] inserted.", key);
+                    }
+                    Err((k, v)) => {
+                        tracing::error!(
+                            "key [{}] already exists with value [{:?}]. This should never occur!",
+                            k,
+                            v
+                        );
                     }
                 }
             }
             Command::None => {
-                tracing::warn!("unrecognized command.");
+                tracing::error!("unrecognized command.");
             }
         }
     }
